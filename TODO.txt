@@ -1,0 +1,14 @@
+TODO:
+	- add to GitHub
+	- numbers/info on hover
+	/ ability to draw
+	- ability to train
+	- visualization of training
+	- configuration:
+		- number of layers
+		- number of neurons
+		- activation function
+		- batch size
+
+DONE:
+	X visualization of weight * input activation
