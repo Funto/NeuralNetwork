@@ -144,6 +144,11 @@ void GUI::updateAndDrawImGui()
 		ImGui::EndDisabled();
 
 		ImGui::Checkbox("Free-form drawing", &m_bFreeFormDrawing);
+		ImGui::BeginDisabled(!m_bFreeFormDrawing);
+		ImGui::SameLine();
+		if(ImGui::SmallButton("Reset"))
+			memset(&m_freeFormDrawingImg.data[0], 0, IMG_SX*IMG_SY);
+		ImGui::EndDisabled();
 		
 		ImDrawList* pDrawList = ImGui::GetWindowDrawList();
 
@@ -155,12 +160,15 @@ void GUI::updateAndDrawImGui()
 		glfwGetWindowSize(m_pMainWindow, &winSizeX, &winSizeY);
 		const ImVec2 winSize = ImVec2((float)winSizeX, (float)winSizeY);
 
-		const int nbLayers = _countof(gData.pNN->layers);
-		const float leftMargin = 0.2f * winSize.x;
-		const float rightMargin = 0.1f * winSize.x;
-		const float topMargin = 0.05f * winSize.y;
-		const float bottomMargin = 0.05f * winSize.y;
-		const float betweenLayers = (winSize.x-leftMargin-rightMargin) / (float)(nbLayers-1);
+		const int	nbLayers = _countof(gData.pNN->layers);
+		const float	leftMargin = 0.2f * winSize.x;
+		const float	rightMargin = 0.1f * winSize.x;
+		const float	topMargin = 0.05f * winSize.y;
+		const float	bottomMargin = 0.05f * winSize.y;
+		const float	betweenLayers = (winSize.x-leftMargin-rightMargin) / (float)(nbLayers-1);
+
+		const LabeledImage	backupFreeFormImg = m_freeFormDrawingImg;
+		bool				bShouldBackupFreeFormImg = false;
 
 		// Draw & update input image
 		{
@@ -174,9 +182,11 @@ void GUI::updateAndDrawImGui()
 			// Free-form drawing implementation
 			if(m_bFreeFormDrawing)
 			{
-				const ImVec2 mousePos = ImGui::GetMousePos();
-				const ImVec2 relMousePos = mousePos - winPos;
-				memset(&m_freeFormDrawingImg.data[0], 0, IMG_SX*IMG_SY);
+				const ImVec2	mousePos		= ImGui::GetMousePos();
+				const bool		bIsMouseDown	= ImGui::IsMouseDown(ImGuiMouseButton_Left);
+				const ImVec2	relMousePos		= mousePos - winPos;
+
+				bShouldBackupFreeFormImg = !bIsMouseDown;
 
 				ImVec2 pos = posStart;
 				for(int y=0 ; y < IMG_SY ; y++, pos.y += pixelSize.y)
@@ -189,11 +199,13 @@ void GUI::updateAndDrawImGui()
 
 						static float s_scale = 10000.f;
 						static float s_minVal = 0.01f;
-						const unsigned char colValue = (unsigned char)std::min(255.f, std::max(0.f, s_scale / std::max(s_minVal, dx*dx + dy*dy)));
-						m_freeFormDrawingImg.data[x + y*IMG_SX] = colValue;
+						static float s_powVal = 1.1f;
+						const unsigned char colValue = (unsigned char)std::min(255.f, std::max(0.f, s_scale / std::max(s_minVal, powf(dx*dx + dy*dy, s_powVal))));
+						unsigned char& outValue = m_freeFormDrawingImg.data[x + y*IMG_SX];
+						outValue = std::max(colValue, outValue);
 					}
 				}
-				//printf("%f %f\n", mousePos.x, mousePos.y);
+				
 				m_freeFormDrawingImg.updateFloatDataFromData();
 				gData.pNN->feedForward(m_freeFormDrawingImg, false);
 			}
@@ -252,6 +264,22 @@ void GUI::updateAndDrawImGui()
 			}
 		}
 
+		// Compute final answer
+		int idxHighestNeuronInLastLayer = -1;
+		{
+			const Layer& lastLayer = gData.pNN->layers[_countof(gData.pNN->layers)-1];
+			float highestValue = -FLT_MAX;
+			for(int idxNeuron=0 ; idxNeuron < lastLayer.nbOutputs ; idxNeuron++)
+			{
+				const float neuronValue = lastLayer.neuronValues[idxNeuron];
+				if(neuronValue > highestValue)
+				{
+					highestValue = neuronValue;
+					idxHighestNeuronInLastLayer = idxNeuron;
+				}
+			}
+		}
+
 		// Draw neurons
 		{
 			const ImColor		neuronColorPos	= ImColor(0.5f,1.0f,0.5f,1.0f);
@@ -271,11 +299,17 @@ void GUI::updateAndDrawImGui()
 
 					if(idxLayer == nbLayers-1)
 					{
-						pDrawList->AddText(winPos + curNeuronPos + ImVec2(charSize*3.f, -charSize), IM_COL32_WHITE, s_labels[idxNeuron]);
+						const ImVec2 textPos = winPos + curNeuronPos + ImVec2(charSize*3.f, -charSize);
+						pDrawList->AddText(textPos, IM_COL32_WHITE, s_labels[idxNeuron]);
+						if(idxNeuron == idxHighestNeuronInLastLayer)
+							pDrawList->AddText(textPos + ImVec2(charSize, 0.f), IM_COL32_WHITE, " <----");
 					}
 				}
 			}
 		}
+
+		if(bShouldBackupFreeFormImg)
+			m_freeFormDrawingImg = backupFreeFormImg;
 	}
 	ImGui::End();
 }

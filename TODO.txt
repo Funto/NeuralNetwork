@@ -1,7 +1,5 @@
 TODO:
-	- add to GitHub
 	- numbers/info on hover
-	/ ability to draw
 	- ability to train
 	- visualization of training
 	- configuration:
@@ -12,3 +10,5 @@ TODO:
 
 DONE:
 	X visualization of weight * input activation
+	X add to GitHub
+	X ability to draw
